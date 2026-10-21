@@ -35,3 +35,23 @@ test('configuração de sessão ausente produz erro explícito', async () => {
   assert.equal((await request('login', { method: 'POST', body: { username: 'admin', password: 'admin123' } })).statusCode, 503);
   process.env.SESSION_SECRET = previous;
 });
+
+test('diagnóstico distingue SQL ausente, chave recusada e falta de permissão', async () => {
+  process.env.SESSION_SECRET = 'test-session-secret-with-more-than-32-characters';
+  process.env.ADMIN_USERNAME = 'admin';
+  process.env.ADMIN_PASSWORD = 'admin123';
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SECRET_KEY = 'test-server-key';
+  const login = await request('login', { method: 'POST', body: { username: 'admin', password: 'admin123' } });
+  const cookie = login.headers['set-cookie'].split(';')[0];
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [status, code, expected] of [[404, 'PGRST205', /schema.sql/], [401, 'PGRST301', /recusou a chave/], [403, '42501', /Sem permissão/]]) {
+      globalThis.fetch = async () => new Response(JSON.stringify({ code, message: 'Provider diagnostic' }), { status, headers: { 'Content-Type': 'application/json' } });
+      const result = await request('data', { cookie });
+      assert.equal(result.statusCode, 503);
+      assert.match(result.body.error, expected);
+      assert.ok(!result.body.error.includes('test-server-key'));
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});

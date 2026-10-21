@@ -21,12 +21,16 @@ async function body(req) {
   try { return JSON.parse(raw || '{}'); } catch { throw Object.assign(new Error('JSON inválido.'), { status: 400 }); }
 }
 async function query(promise) {
-  const { data, error } = await promise;
+  const { data, error, status } = await promise;
   if (error) {
     console.error('Database error:', error.code);
     if (error.code === 'P0001') throw Object.assign(new Error(error.message), { status: 409 });
     if (error.code === '23505') throw Object.assign(new Error('Este cadastro já existe.'), { status: 409 });
-    throw Object.assign(new Error('Não foi possível acessar o banco. Verifique a configuração e a instalação do SQL.'), { status: 503 });
+    let message = 'Não foi possível acessar o banco. Verifique SUPABASE_URL, a chave secreta e se o projeto Supabase está ativo.';
+    if (['PGRST205', '42P01', 'PGRST202'].includes(error.code)) message = 'A instalação do banco está incompleta. Execute todo o arquivo supabase/schema.sql no SQL Editor do mesmo projeto configurado em SUPABASE_URL.';
+    else if (status === 401 || error.code === 'PGRST301' || error.code === 'PGRST303') message = 'O Supabase recusou a chave. Configure SUPABASE_SECRET_KEY com a secret key (sb_secret_...) ou service_role do mesmo projeto de SUPABASE_URL e faça um novo deploy.';
+    else if (status === 403 || error.code === '42501') message = 'Sem permissão no banco. Use a chave secreta sb_secret_... ou service_role em SUPABASE_SECRET_KEY, nunca a chave pública sb_publishable_... ou anon, e execute supabase/schema.sql.';
+    throw Object.assign(new Error(message), { status: 503 });
   }
   return data;
 }
