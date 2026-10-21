@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { dueDate, loanStatus } from '../server/domain.js';
 import './style.css';
@@ -51,12 +51,43 @@ function App() {
   {page === 'books' && <section className="panel"><div className="toolbar"><h2>Nosso acervo <span className="count">{data.books.length} títulos</span></h2><Search value={search} onChange={setSearch} placeholder="Buscar título ou autor…"/></div><div className="book-grid">{data.books.filter(b => `${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase())).map((b,i) => <article className="book-card" key={b.id}><div className={`book-cover cover-${i%4}`}><span>BIBLIOTECA ESCOLAR</span><strong>{b.title}</strong><small>{b.author || 'Autor não informado'}</small><i>✦</i></div><h3>{b.title}</h3><p>{b.author || 'Autor não informado'}</p><div><span className={`badge ${available(b) > 0 ? 'active' : 'overdue'}`}>{available(b)} de {b.copies} disponíveis</span></div></article>)}</div>{!data.books.filter(b => `${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase())).length && <Empty text="Nenhum livro encontrado no acervo." action={() => open('books')} label="Cadastrar livro"/>}</section>}
   <footer>entrelinhas<span>.</span> <small>Feito para cuidar de cada história.</small></footer></main></div>
   {modal && <dialog onCancel={e => { if (busy) e.preventDefault(); else setModal(null); }} onClick={e => { if (e.target === e.currentTarget && !busy) setModal(null); }}><div className="dialog-heading"><div><span className="eyebrow">BIBLIOTECA ESCOLAR</span><h2>{typeof modal === 'object' ? 'Registrar devolução' : modal === 'students' ? 'Novo aluno' : modal === 'books' ? 'Novo livro' : 'Uma nova leitura'}</h2></div><button className="close" disabled={busy} aria-label="Fechar" onClick={() => setModal(null)}>×</button></div>{error && <div role="alert" className="error">{error}</div>}{typeof modal === 'object' ? <div><p>Confirmar a devolução de <strong>{book(modal.loan.book_id)?.title}</strong>, emprestado para <strong>{student(modal.loan.student_id)?.name}</strong>?</p><div className="dialog-actions"><button className="secondary" disabled={busy} onClick={() => setModal(null)}>Cancelar</button><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { await api('return', { id: modal.loan.id }); setModal(null); setNotice('Devolução registrada. Livro disponível para uma nova história!'); await refresh(); } catch(e) { setError(e.message); } finally { setBusy(false); } }}>{busy ? 'Salvando…' : 'Confirmar devolução'}</button></div></div> : <form onSubmit={e => submit(e, modal)}>
-  {modal === 'loans' && <><div className="field-heading"><strong>Quem vai ler?</strong><button type="button" className="text-button" onClick={() => setNewStudent(!newStudent)}>{newStudent && data.students.length ? 'Selecionar cadastrado' : '＋ Novo aluno'}</button></div>{!newStudent && <label>Aluno<select name="student_id" required defaultValue=""><option value="" disabled>Selecione o aluno</option>{data.students.map(s => <option key={s.id} value={s.id}>{s.name} · {s.grade}º ano</option>)}</select></label>}</>}
+  {modal === 'loans' && <><div className="field-heading"><strong>Quem vai ler?</strong><button type="button" className="text-button" onClick={() => setNewStudent(!newStudent)}>{newStudent && data.students.length ? 'Buscar cadastrado' : '＋ Novo aluno'}</button></div>{!newStudent && <EntitySearch label="Aluno" name="student_id" placeholder="Digite o nome do aluno…" items={data.students.map(s => ({ id: s.id, name: s.name, detail: `${s.grade}º ano` }))} empty="Nenhum aluno encontrado. Você pode cadastrar um novo aluno."/>}</>}
   {(modal === 'students' || (modal === 'loans' && newStudent)) && <div className="form-row"><label>Nome do aluno<input name={modal === 'students' ? 'name' : 'student_name'} required maxLength={160} placeholder="Nome completo"/></label><label>Ano escolar<select name="grade" required defaultValue=""><option value="" disabled>Selecione</option>{[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}º ano</option>)}</select></label></div>}
-  {modal === 'loans' && <><div className="field-heading"><strong>Qual a próxima história?</strong><button type="button" className="text-button" onClick={() => setNewBook(!newBook)}>{newBook && data.books.length ? 'Selecionar cadastrado' : '＋ Novo livro'}</button></div>{!newBook && <label>Livro<select name="book_id" required defaultValue=""><option value="" disabled>Selecione um livro disponível</option>{data.books.map(b => <option key={b.id} value={b.id} disabled={available(b) <= 0}>{b.title} ({available(b)} disponíveis)</option>)}</select></label>}</>}
+  {modal === 'loans' && <><div className="field-heading"><strong>Qual a próxima história?</strong><button type="button" className="text-button" onClick={() => setNewBook(!newBook)}>{newBook && data.books.length ? 'Buscar cadastrado' : '＋ Novo livro'}</button></div>{!newBook && <EntitySearch label="Livro" name="book_id" placeholder="Digite o título do livro…" items={data.books.map(b => ({ id: b.id, name: b.title, detail: `${b.author ? b.author + " · " : ""}${available(b)} disponíveis`, disabled: available(b) <= 0 }))} empty="Nenhum livro encontrado. Você pode cadastrar um novo livro."/>}</>}
   {(modal === 'books' || (modal === 'loans' && newBook)) && <><label>Título do livro<input name={modal === 'books' ? 'title' : 'book_title'} required maxLength={160} placeholder="Como se chama o livro?"/></label><div className="form-row"><label>Autor <small>(opcional)</small><input name={modal === 'books' ? 'author' : 'book_author'} maxLength={160} placeholder="Nome do autor"/></label>{modal === 'books' && <label>Exemplares<input name="copies" type="number" min="1" max="999" defaultValue="1" required/></label>}</div></>}
   {modal === 'loans' && <div className="form-row due-row"><label>Prazo de devolução<select name="days" value={days} onChange={e => setDays(Number(e.target.value))}>{[3,7,14,21,30].map(n => <option key={n} value={n}>{n} dias</option>)}</select></label><div><small>Devolução prevista</small><strong>{data.today ? formatDate(dueDate(data.today, days)) : '—'}</strong></div></div>}
   <div className="dialog-actions"><button type="button" className="secondary" disabled={busy} onClick={() => setModal(null)}>Cancelar</button><button className="primary" disabled={busy || (modal === 'loans' && !data.today)}>{busy ? 'Salvando…' : modal === 'loans' ? 'Registrar empréstimo →' : 'Salvar cadastro'}</button></div></form>}</dialog>}
+  </div>;
+}
+const normalizeSearch = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
+function EntitySearch({ label, name, placeholder, items, empty }) {
+  const id = useId();
+  const [query, setQuery] = useState(''), [selectedId, setSelectedId] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const selected = items.find(item => item.id === selectedId && !item.disabled);
+  const term = normalizeSearch(query);
+  const matches = term ? items.filter(item => normalizeSearch(item.name).includes(term)) : [];
+  return <div className="entity-search" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setExpanded(false); }}>
+    <label htmlFor={id}>{label}</label>
+    <input id={id} type="text" autoComplete="off" placeholder={placeholder} value={query} required
+      aria-describedby={id + '-hint'} aria-expanded={expanded && !!term} aria-controls={id + '-results'}
+      ref={input => input?.setCustomValidity(selected ? '' : 'Busque e selecione um resultado da lista.')}
+      onFocus={() => setExpanded(true)}
+      onChange={event => { setQuery(event.target.value); setSelectedId(''); setExpanded(true); }}
+      onKeyDown={event => {
+        if (event.key === 'Escape' && expanded) { event.preventDefault(); event.stopPropagation(); setExpanded(false); }
+        if (event.key === 'Enter' && !selected) { event.preventDefault(); setExpanded(true); }
+        if (event.key === 'ArrowDown') { event.preventDefault(); setExpanded(true); document.getElementById(id + '-results')?.querySelector('button:not(:disabled)')?.focus(); }
+      }}/>
+    <input type="hidden" name={name} value={selected?.id || ''}/>
+    <small id={id + '-hint'} className="entity-hint">{selected ? '✓ Selecionado: ' + selected.name : 'Digite para buscar e selecione um resultado.'}</small>
+    {expanded && term && <ul id={id + '-results'} className="entity-results" aria-label={'Resultados da busca de ' + label.toLowerCase()}>
+      {matches.map(item => <li key={item.id}><button type="button" disabled={item.disabled}
+        onClick={() => { setSelectedId(item.id); setQuery(item.name); setExpanded(false); document.getElementById(id)?.focus(); setExpanded(false); }}>
+        <strong>{item.name}</strong><small>{item.detail}{item.disabled ? ' · Indisponível' : ''}</small>
+      </button></li>)}
+      {!matches.length && <li className="entity-no-results" role="status">{empty}</li>}
+    </ul>}
   </div>;
 }
 function Search({ value, onChange, placeholder }) { return <label className="search"><span aria-hidden="true">⌕</span><input aria-label={placeholder} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}/></label>; }
